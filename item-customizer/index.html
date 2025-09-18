@@ -78,6 +78,15 @@
             <div class="file-size" id="fileSize"></div>
         </div>
         
+        <div class="clipboard-section">
+            <div class="clipboard-header">
+                <h4>📋 Or paste from clipboard</h4>
+                <p>Copy your Lua code and paste it here for instant conversion</p>
+            </div>
+            <textarea id="clipboardInput" placeholder="Paste your Lua item definitions here..."></textarea>
+            <button id="convertClipboard" class="convert-btn">Convert Clipboard Content</button>
+        </div>
+        
         <button class="convert-btn" id="convertBtn" disabled>Convert to Customizer Format</button>
         
         <div class="progress" id="progress">
@@ -88,8 +97,9 @@
             <h3>✅ Conversion Complete!</h3>
             <p>Your file has been converted successfully.</p>
             <div class="result-actions">
-                <button class="download-btn" id="downloadBtn">Download converted-items.lua</button>
-                <button class="view-diff-btn" id="viewDiffBtn">View Changes</button>
+                <button class="download-btn" id="downloadBtn">📥 Download converted-items.lua</button>
+                <button class="copy-btn" id="copyBtn">📋 Copy to Clipboard</button>
+                <button class="view-diff-btn" id="viewDiffBtn">🔍 View Changes</button>
             </div>
         </div>
         

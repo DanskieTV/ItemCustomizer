@@ -1,7 +1,7 @@
 // Item Lua Converter - Multiple Format Support
 class ItemConverter {
     constructor() {
-        this.selectedFormat = 'compact';
+        this.selectedFormat = 'original';
         this.initializeEventListeners();
     }
 
@@ -29,6 +29,21 @@ class ItemConverter {
         viewDiffBtn.addEventListener('click', (e) => {
             console.log('View Changes button clicked!');
             this.showDiffViewer();
+        });
+
+        // Copy to clipboard button
+        const copyBtn = document.getElementById('copyBtn');
+        copyBtn.addEventListener('click', this.copyToClipboard.bind(this));
+
+        // Clipboard conversion
+        const convertClipboardBtn = document.getElementById('convertClipboard');
+        const clipboardInput = document.getElementById('clipboardInput');
+        convertClipboardBtn.addEventListener('click', this.convertClipboard.bind(this));
+        
+        // Auto-resize clipboard textarea
+        clipboardInput.addEventListener('input', () => {
+            clipboardInput.style.height = 'auto';
+            clipboardInput.style.height = Math.max(120, clipboardInput.scrollHeight) + 'px';
         });
 
         // Navigation tabs
@@ -218,6 +233,85 @@ class ItemConverter {
         }
     }
 
+    async convertClipboard() {
+        const clipboardInput = document.getElementById('clipboardInput');
+        const content = clipboardInput.value.trim();
+        
+        if (!content) {
+            this.showError('Please paste some Lua code first!');
+            return;
+        }
+
+        this.showProgress();
+        this.hideError();
+        this.hideResult();
+
+        try {
+            console.log('Converting clipboard content...');
+            this.updateProgress(10);
+            
+            // Store original content for diff comparison
+            this.originalContent = content;
+            
+            console.log('Parsing items from clipboard...');
+            let items = this.parseItemsFlexible(content);
+            
+            // If flexible parser finds nothing, try crafting format parser
+            if (items.length === 0) {
+                console.log('Trying crafting format parser...');
+                items = this.parseCraftingFormat(content);
+            }
+            
+            this.updateProgress(50);
+            console.log(`Found ${items.length} items`);
+            
+            if (items.length === 0) {
+                this.hideProgress();
+                this.showError('No valid items found in the pasted code. Make sure you\'re pasting Lua item definitions or try a different format.');
+                return;
+            }
+            
+            console.log('Converting to format...');
+            const convertedContent = await this.convertToFormatAsync(items, this.selectedFormat);
+            this.updateProgress(90);
+            
+            // Store converted content for diff comparison
+            this.convertedContent = convertedContent;
+            
+            console.log('Creating download...');
+            const blob = new Blob([convertedContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            
+            document.getElementById('downloadBtn').onclick = () => {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `converted-items-${this.selectedFormat}.${this.getFileExtension()}`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+            
+            this.updateProgress(100);
+            
+            // Show detailed stats
+            document.getElementById('totalItems').textContent = items.length;
+            document.getElementById('outputSize').textContent = this.formatFileSize(blob.size);
+            
+            // Add validation info
+            this.showValidationInfo(items, content);
+            
+            setTimeout(() => {
+                this.hideProgress();
+                document.getElementById('result').style.display = 'block';
+                document.getElementById('stats').style.display = 'flex';
+            }, 500);
+            
+        } catch (err) {
+            this.hideProgress();
+            console.error('Clipboard conversion error:', err);
+            this.showError('Failed to convert clipboard content: ' + err.message);
+        }
+    }
+
     getFileExtension() {
         const extensions = {
             'original': 'lua',
@@ -390,6 +484,285 @@ class ItemConverter {
         }
         
         return items;
+    }
+
+    parseItemsFlexible(content) {
+        console.log('Starting flexible parsing for clipboard content...');
+        console.log('Content preview:', content.substring(0, 500));
+        
+        const items = [];
+        const lines = content.split('\n');
+        let currentItem = null;
+        let i = 0;
+
+        console.log(`Total lines in content: ${lines.length}`);
+
+        while (i < lines.length) {
+            let line = lines[i].trim();
+            
+            // Skip comments and empty lines
+            if (line.startsWith('--') || line === '') {
+                i++;
+                continue;
+            }
+
+            // Look for item keys - handle both ['itemname'] = { and itemname = {
+            if (line.includes('=') && line.includes('{')) {
+                let keyMatch = null;
+                
+                // Try bracket notation first: ['itemname'] = {
+                if (line.includes('[') && line.includes(']')) {
+                    keyMatch = line.match(/\[['"]([^'"]+)['"]\]\s*=\s*\{/);
+                }
+                // Try direct assignment: itemname = {
+                else {
+                    keyMatch = line.match(/^(\w+)\s*=\s*\{/);
+                }
+                
+                if (keyMatch) {
+                    console.log(`Found item key at line ${i}: "${keyMatch[1]}" (line: "${line}")`);
+                    // Save previous item
+                    if (currentItem) {
+                        items.push(currentItem);
+                    }
+                    currentItem = { key: keyMatch[1] };
+                }
+                i++;
+                continue;
+            }
+
+            // Parse item properties - only if we have a current item and this looks like a property
+            if (currentItem && line.includes('=') && !line.includes('{') && !line.includes('}') && 
+                (line.includes('[') || line.match(/^\s*\w+\s*=/))) {
+                
+                // Handle multi-line values and complex structures
+                let fullLine = line;
+                
+                // Check if this line continues on the next line (no comma at end)
+                while (i + 1 < lines.length && !fullLine.endsWith(',') && !fullLine.endsWith('}')) {
+                    i++;
+                    const nextLine = lines[i].trim();
+                    if (nextLine === '' || nextLine.startsWith('--')) continue;
+                    fullLine += ' ' + nextLine;
+                }
+
+                // Handle both bracket notation ['prop'] = value and direct prop = value
+                let match = fullLine.match(/\[['"]([^'"]+)['"]\]\s*=\s*(.+),?$/);
+                if (!match) {
+                    match = fullLine.match(/(\w+)\s*=\s*(.+),?$/);
+                }
+                if (match) {
+                    const [, prop, value] = match;
+                    let cleanValue = value.replace(/,$/, '').trim();
+                    
+                    // Debug: Log property parsing
+                    console.log(`Parsing property: ${prop} = "${value}" -> cleanValue: "${cleanValue}"`);
+                    
+                    // Handle quoted strings
+                    if ((cleanValue.startsWith('"') && cleanValue.endsWith('"')) || 
+                        (cleanValue.startsWith("'") && cleanValue.endsWith("'"))) {
+                        cleanValue = cleanValue.slice(1, -1);
+                    }
+                    
+                    // Handle boolean values
+                    if (cleanValue === 'true') cleanValue = true;
+                    else if (cleanValue === 'false') cleanValue = false;
+                    
+                    // Handle numeric values
+                    else if (!isNaN(cleanValue) && cleanValue !== '') {
+                        cleanValue = parseFloat(cleanValue);
+                    }
+                    
+                    // Handle nil values
+                    if (cleanValue === 'nil') cleanValue = null;
+                    
+                    currentItem[prop] = cleanValue;
+                    console.log(`Set ${prop} = ${JSON.stringify(cleanValue)}`);
+                }
+            }
+
+            // Check for end of current item
+            if (currentItem && line.includes('}')) {
+                items.push(currentItem);
+                currentItem = null;
+            }
+
+            i++;
+        }
+
+        // Don't forget the last item
+        if (currentItem) {
+            items.push(currentItem);
+        }
+
+        console.log(`Flexible parsing found ${items.length} items`);
+        if (items.length > 0) {
+            console.log('First 5 items found:', items.slice(0, 5).map(item => item.key));
+            console.log('Last 5 items found:', items.slice(-5).map(item => item.key));
+        }
+        
+        return items;
+    }
+
+    parseCraftingFormat(content) {
+        console.log('Starting crafting format parsing...');
+        console.log('Content preview:', content.substring(0, 500));
+        
+        const items = [];
+        const lines = content.split('\n');
+        let i = 0;
+
+        console.log(`Total lines in content: ${lines.length}`);
+
+        while (i < lines.length) {
+            let line = lines[i].trim();
+            
+            // Skip comments and empty lines
+            if (line.startsWith('--') || line === '') {
+                i++;
+                continue;
+            }
+
+            // Look for crafting format: ['itemname'] = createCraftable(...)
+            const craftingMatch = line.match(/\[['"]([^'"]+)['"]\]\s*=\s*createCraftable\s*\(/);
+            if (craftingMatch) {
+                const itemKey = craftingMatch[1];
+                console.log(`Found crafting item: ${itemKey}`);
+                
+                // Find the opening parenthesis and collect all parameters
+                let paramStart = line.indexOf('createCraftable(') + 'createCraftable('.length;
+                let params = '';
+                let parenCount = 1;
+                let currentLine = line.substring(paramStart);
+                
+                // Collect all parameters across multiple lines
+                while (i < lines.length && parenCount > 0) {
+                    for (let char of currentLine) {
+                        if (char === '(') parenCount++;
+                        else if (char === ')') parenCount--;
+                        if (parenCount > 0) params += char;
+                    }
+                    
+                    if (parenCount > 0) {
+                        i++;
+                        if (i < lines.length) {
+                            currentLine = lines[i];
+                        }
+                    }
+                }
+                
+                // Parse the parameters
+                const parsedItem = this.parseCraftingParams(itemKey, params);
+                if (parsedItem) {
+                    items.push(parsedItem);
+                    console.log(`Parsed crafting item: ${itemKey} -> ${parsedItem.label}`);
+                }
+            }
+
+            i++;
+        }
+
+        console.log(`Crafting format parsing found ${items.length} items`);
+        if (items.length > 0) {
+            console.log('First 5 items found:', items.slice(0, 5).map(item => item.key));
+        }
+        
+        return items;
+    }
+
+    parseCraftingParams(itemKey, params) {
+        try {
+            // Split parameters by comma, but be careful with nested structures
+            const paramList = this.splitCraftingParams(params);
+            
+            if (paramList.length < 5) {
+                console.log(`Not enough parameters for ${itemKey}: ${paramList.length}`);
+                return null;
+            }
+            
+            // Extract basic parameters
+            const name = this.cleanString(paramList[0]);
+            const label = this.cleanString(paramList[1]);
+            const image = this.cleanString(paramList[2]);
+            const type = this.cleanString(paramList[3]);
+            const color = this.cleanString(paramList[4]);
+            const description = paramList.length > 5 ? this.cleanString(paramList[5]) : '';
+            
+            // Create QBCore item structure
+            const item = {
+                key: itemKey,
+                name: name || itemKey,
+                label: label || this.formatLabel(itemKey),
+                weight: 100, // Default weight for weapons
+                type: type || 'weapon',
+                image: image || 'default.png',
+                unique: true, // Weapons are typically unique
+                useable: true,
+                shouldClose: true,
+                combinable: null,
+                description: description || `A ${label || itemKey}`
+            };
+            
+            return item;
+            
+        } catch (error) {
+            console.error(`Error parsing crafting params for ${itemKey}:`, error);
+            return null;
+        }
+    }
+
+    splitCraftingParams(params) {
+        const result = [];
+        let current = '';
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+        
+        for (let i = 0; i < params.length; i++) {
+            const char = params[i];
+            
+            if (!inString && (char === '"' || char === "'")) {
+                inString = true;
+                stringChar = char;
+                current += char;
+            } else if (inString && char === stringChar) {
+                inString = false;
+                stringChar = '';
+                current += char;
+            } else if (!inString && char === '(') {
+                depth++;
+                current += char;
+            } else if (!inString && char === ')') {
+                depth--;
+                current += char;
+            } else if (!inString && char === ',' && depth === 0) {
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        
+        if (current.trim()) {
+            result.push(current.trim());
+        }
+        
+        return result;
+    }
+
+    cleanString(str) {
+        if (!str) return '';
+        str = str.trim();
+        if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+            return str.slice(1, -1);
+        }
+        return str;
+    }
+
+    formatLabel(itemKey) {
+        return itemKey
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, l => l.toUpperCase());
     }
 
     convertToFormat(items, format) {
@@ -1081,6 +1454,34 @@ end
     hideResult() {
         document.getElementById('result').style.display = 'none';
         document.getElementById('stats').style.display = 'none';
+    }
+
+    async copyToClipboard() {
+        if (!this.convertedContent) {
+            this.showError('No converted content available to copy');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(this.convertedContent);
+            
+            // Visual feedback
+            const copyBtn = document.getElementById('copyBtn');
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = '✅ Copied!';
+            copyBtn.classList.add('copied');
+            
+            // Reset after 2 seconds
+            setTimeout(() => {
+                copyBtn.textContent = originalText;
+                copyBtn.classList.remove('copied');
+            }, 2000);
+            
+            console.log('Content copied to clipboard successfully');
+        } catch (err) {
+            console.error('Failed to copy to clipboard:', err);
+            this.showError('Failed to copy to clipboard. Please try downloading the file instead.');
+        }
     }
 
     showDiffViewer() {
