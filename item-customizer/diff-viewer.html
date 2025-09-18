@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Before vs After Comparison - Item Lua Converter</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .diff-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(30, 30, 46, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+
+        .diff-header {
+            background: rgba(100, 181, 246, 0.1);
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .diff-header h1 {
+            color: #64b5f6;
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 300;
+        }
+
+        .back-btn {
+            background: linear-gradient(135deg, #64b5f6 0%, #42a5f5 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(100, 181, 246, 0.3);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .back-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(100, 181, 246, 0.4);
+        }
+
+        .diff-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            min-height: 80vh;
+            background: #1a1a2e;
+        }
+
+        .diff-side {
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .diff-side:last-child {
+            border-right: none;
+        }
+
+        .diff-title {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            font-weight: 600;
+            color: #64b5f6;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 1.1rem;
+        }
+
+        .diff-code {
+            background: #1e1e2e;
+            padding: 30px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            flex: 1;
+            overflow-y: auto;
+            color: #e0e0e0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .code-line {
+            display: flex;
+            align-items: flex-start;
+            margin: 3px 0;
+            padding: 3px 0;
+            opacity: 1;
+            transform: none;
+        }
+
+        .line-number {
+            color: #666;
+            margin-right: 20px;
+            user-select: none;
+            font-size: 0.8rem;
+            min-width: 40px;
+            text-align: right;
+            opacity: 0.7;
+        }
+
+        /* Syntax highlighting */
+        .comment {
+            color: #6a9955;
+            font-style: italic;
+            opacity: 0.8;
+        }
+
+        .keyword {
+            color: #c586c0;
+            font-weight: 600;
+        }
+
+        .variable {
+            color: #4fc1ff;
+            font-weight: 500;
+        }
+
+        .string {
+            color: #ce9178;
+            background: rgba(206, 145, 120, 0.1);
+            padding: 1px 3px;
+            border-radius: 3px;
+        }
+
+        .number {
+            color: #b5cea8;
+            font-weight: 500;
+        }
+
+        .bracket {
+            color: #ffd700;
+            font-weight: 600;
+        }
+
+        .brace {
+            color: #ffd700;
+            font-weight: 600;
+        }
+
+        .operator {
+            color: #d4d4d4;
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            .diff-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .diff-side {
+                border-right: none;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            
+            .diff-side:last-child {
+                border-bottom: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="diff-container">
+        <div class="diff-header">
+            <h1>📊 Before vs After Comparison</h1>
+            <a href="index.html" class="back-btn">
+                ← Back to Converter
+            </a>
+        </div>
+        <div class="diff-content">
+            <div class="diff-side">
+                <div class="diff-title">Original Format</div>
+                <div class="diff-code" id="originalCode">
+                    <div class="code-line">
+                        <span class="line-number">1</span>
+                        <span class="comment">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="diff-side">
+                <div class="diff-title">Converted Format</div>
+                <div class="diff-code" id="convertedCode">
+                    <div class="code-line">
+                        <span class="line-number">1</span>
+                        <span class="comment">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get data from sessionStorage
+        const originalContent = sessionStorage.getItem('diff_original');
+        const convertedContent = sessionStorage.getItem('diff_converted');
+        const format = sessionStorage.getItem('diff_format');
+
+        function highlightLuaSyntax(code) {
+            return code
+                .replace(/--.*$/gm, '<span class="comment">$&</span>') // Comments
+                .replace(/\b(function|local|if|then|else|elseif|end|for|while|do|return|and|or|not|true|false|nil)\b/g, '<span class="keyword">$1</span>') // Keywords
+                .replace(/\b(QBShared|Items)\b/g, '<span class="variable">$1</span>') // Variables
+                .replace(/(['"])((?:\\.|(?!\1)[^\\])*?)\1/g, '<span class="string">$&</span>') // Strings
+                .replace(/\b\d+\.?\d*\b/g, '<span class="number">$&</span>') // Numbers
+                .replace(/\[([^\]]+)\]/g, '<span class="bracket">[$1]</span>') // Brackets
+                .replace(/(\{|\})/g, '<span class="brace">$1</span>') // Braces
+                .replace(/(\||,|;)/g, '<span class="operator">$1</span>'); // Operators
+        }
+
+        function addLineNumbers(code) {
+            const lines = code.split('\n');
+            return lines.map((line, index) => {
+                const lineNumber = (index + 1).toString().padStart(3, ' ');
+                return `<div class="code-line"><span class="line-number">${lineNumber}</span>${line}</div>`;
+            }).join('\n');
+        }
+
+        function loadContent() {
+            console.log('Loading content...');
+            console.log('Original content exists:', !!originalContent);
+            console.log('Converted content exists:', !!convertedContent);
+            console.log('Format:', format);
+            
+            if (originalContent && convertedContent) {
+                try {
+                    console.log('Original content length:', originalContent.length);
+                    console.log('Converted content length:', convertedContent.length);
+
+                    // Show the FULL content (no need to decode since it's from sessionStorage)
+                    document.getElementById('originalCode').innerHTML = addLineNumbers(highlightLuaSyntax(originalContent));
+                    document.getElementById('convertedCode').innerHTML = addLineNumbers(highlightLuaSyntax(convertedContent));
+
+                    // Update title with format info
+                    if (format) {
+                        const formatNames = {
+                            'original': 'Original Block',
+                            'compact': 'Compact Pipe',
+                            'json': 'JSON',
+                            'csv': 'CSV',
+                            'minimal': 'Optimized'
+                        };
+                        const convertedTitle = document.querySelectorAll('.diff-title')[1];
+                        if (convertedTitle) {
+                            convertedTitle.textContent = `${formatNames[format] || 'Converted'} Format`;
+                        }
+                    }
+                    
+                    console.log('Content loaded successfully');
+                } catch (error) {
+                    console.error('Error loading content:', error);
+                    document.getElementById('originalCode').innerHTML = '<div class="code-line"><span class="line-number">1</span><span class="comment">Error loading original content: ' + error.message + '</span></div>';
+                    document.getElementById('convertedCode').innerHTML = '<div class="code-line"><span class="line-number">1</span><span class="comment">Error loading converted content: ' + error.message + '</span></div>';
+                }
+            } else {
+                // No data provided, show error
+                console.log('No content found in sessionStorage');
+                document.getElementById('originalCode').innerHTML = '<div class="code-line"><span class="line-number">1</span><span class="comment">No data available. Please go back and convert a file first.</span></div>';
+                document.getElementById('convertedCode').innerHTML = '<div class="code-line"><span class="line-number">1</span><span class="comment">No data available. Please go back and convert a file first.</span></div>';
+            }
+        }
+
+        // Load content when page loads
+        document.addEventListener('DOMContentLoaded', loadContent);
+    </script>
+</body>
+</html>
