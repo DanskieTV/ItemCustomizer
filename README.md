@@ -6,7 +6,7 @@ My custom item tool for FiveM servers. Converts items between different formats,
 ## How To Use
 
 ### Quick Start
-1. **Open:** `react-app\buildbuild\index.html` in your browser
+1. **Open:** `react-app\build\index.html` in your browser
 2. **That's it!** Everything is already built and ready to go
 
 ### For Developers (Optional)
